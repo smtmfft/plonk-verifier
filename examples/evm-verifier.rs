@@ -25,7 +25,7 @@ use plonk_verifier::{
     verifier::{self, PlonkVerifier},
 };
 use rand::{rngs::OsRng, RngCore};
-use std::rc::Rc;
+use std::{rc::Rc, env::var};
 
 type Plonk = verifier::Plonk<Kzg<Bn256, Gwc19>>;
 
@@ -200,6 +200,9 @@ fn gen_proof<C: Circuit<Fr>>(
     proof
 }
 
+use std::fs::File;
+use std::io::Write as fwrite;
+
 fn gen_evm_verifier(
     params: &ParamsKZG<Bn256>,
     vk: &VerifyingKey<G1Affine>,
@@ -220,6 +223,12 @@ fn gen_evm_verifier(
     let instances = transcript.load_instances(num_instance);
     let proof = Plonk::read_proof(&svk, &protocol, &instances, &mut transcript).unwrap();
     Plonk::verify(&svk, &dk, &protocol, &instances, &proof).unwrap();
+
+    // println!("loader.yul_code() == {:?}", &loader.yul_code());
+    File::create("./PlonkVerifier.sol")
+        .expect("PlonkVerifier.sol")
+        .write_all(&loader.yul_code().as_bytes())
+        .expect("PlonkVerifier.sol");
 
     evm::compile_yul(&loader.yul_code())
 }
@@ -245,8 +254,35 @@ fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: Vec<u8>)
     assert!(success);
 }
 
+use std::fs;
+
+pub fn write_params(degree: usize, params: &ParamsKZG<Bn256>) -> Result<(), std::io::Error> {
+    let dir = "./generated";
+    fs::create_dir_all(dir).unwrap_or_else(|_| panic!("create {}", dir));
+    let path = format!("{}/srs-{}", dir, degree);
+    let mut file = fs::File::create(&path).unwrap_or_else(|_| panic!("create {}", &path));
+    params.write(&mut file)
+}
+
+pub fn read_params(degree: usize) -> Result<ParamsKZG<Bn256>, std::io::Error> {
+    let dir = "./generated";
+    let path = format!("{}/srs-{}", dir, degree);
+    let mut file = fs::File::open(&path)?;
+    ParamsKZG::<Bn256>::read(&mut file)
+}
+
 fn main() {
-    let params = gen_srs(8);
+    let degree: usize = var("DEGREE")
+    .unwrap_or_else(|_| "8".to_string())
+    .parse()
+    .expect("Cannot parse DEGREE env var as usize");
+    let params = if let Ok(params) = read_params(degree) {
+        params
+    } else {
+        let params = gen_srs(degree as u32);
+        write_params(degree, &params).expect("write srs ok");
+        params
+    };
 
     let circuit = StandardPlonk::rand(OsRng);
     let pk = gen_pk(&params, &circuit);

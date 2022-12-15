@@ -545,6 +545,9 @@ fn gen_application_snark(params: &ParamsKZG<Bn256>) -> aggregation::Snark {
     aggregation::Snark::new(protocol, circuit.instances(), proof)
 }
 
+use std::fs::File;
+use std::io::Write as fwrite;
+
 fn gen_aggregation_evm_verifier(
     params: &ParamsKZG<Bn256>,
     vk: &VerifyingKey<G1Affine>,
@@ -568,6 +571,11 @@ fn gen_aggregation_evm_verifier(
     let instances = transcript.load_instances(num_instance);
     let proof = Plonk::read_proof(&svk, &protocol, &instances, &mut transcript).unwrap();
     Plonk::verify(&svk, &dk, &protocol, &instances, &proof).unwrap();
+
+    File::create("./PlonkAggregationVerifier.sol")
+    .expect("PlonkAggregationVerifier.sol")
+    .write_all(&loader.yul_code().as_bytes())
+    .expect("PlonkAggregationVerifier.sol");
 
     evm::compile_yul(&loader.yul_code())
 }
@@ -593,23 +601,70 @@ fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: Vec<u8>)
     assert!(success);
 }
 
+use std::fs;
+use std::env::var;
+use std::time::{Instant};
+
+pub fn write_params(degree: usize, params: &ParamsKZG<Bn256>) -> Result<(), std::io::Error> {
+    let dir = "./generated";
+    fs::create_dir_all(dir).unwrap_or_else(|_| panic!("create {}", dir));
+    let path = format!("{}/srs-{}", dir, degree);
+    let mut file = fs::File::create(&path).unwrap_or_else(|_| panic!("create {}", &path));
+    params.write(&mut file)
+}
+
+pub fn read_params(degree: usize) -> Result<ParamsKZG<Bn256>, std::io::Error> {
+    let dir = "./generated";
+    let path = format!("{}/srs-{}", dir, degree);
+    let mut file = fs::File::open(&path)?;
+    ParamsKZG::<Bn256>::read(&mut file)
+}
+
 fn main() {
-    let params = gen_srs(22);
-    let params_app = {
-        let mut params = params.clone();
-        params.downsize(8);
+    let degree: usize = var("DEGREE")
+    .unwrap_or_else(|_| "21".to_string())
+    .parse()
+    .expect("Cannot parse DEGREE env var as usize");
+    let params = if let Ok(params) = read_params(degree) {
+        params
+    } else {
+        let params = gen_srs(degree as u32);
+        write_params(degree, &params).expect("write srs ok");
         params
     };
 
-    let snarks = [(); 3].map(|_| gen_application_snark(&params_app));
+    let mut start = Instant::now();
+    let params_app = {
+        let mut params = params.clone();
+        params.downsize(20);
+        params
+    };
+    let duration = start.elapsed();
+    println!("params_app elapsed in expensive_function() is: {:?}", duration);
+
+    start = Instant::now();
+    let snarks = [(); 1].map(|_| gen_application_snark(&params_app));
     let agg_circuit = aggregation::AggregationCircuit::new(&params, snarks);
+    let duration = start.elapsed();
+    println!("AggregationCircuit elapsed in expensive_function() is: {:?}", duration);
+    start = Instant::now();
+
     let pk = gen_pk(&params, &agg_circuit);
+
+    let duration = start.elapsed();
+    println!("gen_pk elapsed in expensive_function() is: {:?}", duration);
+    start = Instant::now();
+
     let deployment_code = gen_aggregation_evm_verifier(
         &params,
         pk.get_vk(),
         aggregation::AggregationCircuit::num_instance(),
         aggregation::AggregationCircuit::accumulator_indices(),
     );
+    let duration = start.elapsed();
+    println!("gen_aggregation_evm_verifier elapsed in expensive_function() is: {:?}", duration);
+
+    start = Instant::now();
 
     let proof = gen_proof::<_, _, EvmTranscript<G1Affine, _, _, _>, EvmTranscript<G1Affine, _, _, _>>(
         &params,
@@ -617,5 +672,11 @@ fn main() {
         agg_circuit.clone(),
         agg_circuit.instances(),
     );
+    let duration = start.elapsed();
+    println!("gen_proof elapsed in expensive_function() is: {:?}", duration);
+
+    start = Instant::now();
     evm_verify(deployment_code, agg_circuit.instances(), proof);
+    let duration = start.elapsed();
+    println!("evm_verify elapsed in expensive_function() is: {:?}", duration);
 }
