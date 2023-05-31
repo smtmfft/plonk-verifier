@@ -38,13 +38,13 @@ criterion = "0.4"
 criterion-macro = "0.4"
 
 [features]
-default = ["loader_halo2", "loader_evm", "derive_serde", "display"]
+default = ["loader_halo2", "loader_evm", "derive_serde", "display", "halo2_circuit_params"]
 display = ["dep:ark-std"]
 loader_evm = ["snark-verifier/loader_evm", "dep:ethereum-types"]
 loader_halo2 = ["snark-verifier/system_halo2", "snark-verifier/loader_halo2", "dep:halo2_wrong_ecc", "dep:poseidon"]
 parallel = ["snark-verifier/parallel"]
 derive_serde = ["snark-verifier/derive_serde", "halo2curves/derive_serde"]
-# halo2_circuit_params = ["snark-verifier/halo2_circuit_params"]
+halo2_circuit_params = ["snark-verifier/halo2_circuit_params", "halo2_proofs/circuit-params"]
 
 [[bench]]
 name = "standard_plonk"

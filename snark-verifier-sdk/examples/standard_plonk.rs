@@ -100,6 +100,8 @@ mod application {
     impl Circuit<Fr> for StandardPlonk {
         type Config = StandardPlonkConfig;
         type FloorPlanner = SimpleFloorPlanner;
+        #[cfg(feature = "halo2_circuit_params")]
+        type Params = ();
 
         fn without_witnesses(&self) -> Self {
             Self::default()
@@ -149,7 +151,7 @@ mod application {
 fn gen_application_snark(params: &ParamsKZG<Bn256>) -> Snark {
     let circuit = application::StandardPlonk::rand(OsRng);
 
-    let pk = gen_pk(params, &circuit, Some(Path::new("./examples/app.pk")));
+    let pk = gen_pk::<_, _>(params, &circuit, Some(Path::new("./examples/app.pk")), ());
     gen_snark_shplonk(params, &pk, circuit, None::<&str>)
 }
 
@@ -165,6 +167,7 @@ fn main() {
         &params,
         &agg_circuit.without_witnesses(),
         Some(Path::new("./examples/agg.pk")),
+        agg_circuit.params(),
     );
     end_timer!(start0);
 

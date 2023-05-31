@@ -10,6 +10,7 @@ use halo2_proofs::{
     poly::kzg::commitment::ParamsKZG,
     SerdeFormat,
 };
+use halo2curves::CurveAffine;
 use itertools::Itertools;
 #[cfg(feature = "derive_serde")]
 use serde::{Deserialize, Serialize};
@@ -118,7 +119,10 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     }
 }
 
-pub fn read_pk<C: Circuit<Fr>>(path: &Path) -> io::Result<ProvingKey<G1Affine>> {
+pub fn read_pk<C: CurveAffine<ScalarExt = Fr>, ConcreteCircuit: Circuit<C::Scalar>>(
+        path: &Path,
+        #[cfg(feature = "halo2_circuit_params")] params: ConcreteCircuit::Params,
+    ) -> io::Result<ProvingKey<G1Affine>> {
     let f = File::open(path)?;
     #[cfg(feature = "display")]
     let read_time = start_timer!(|| format!("Reading pkey from {path:?}"));
@@ -130,7 +134,11 @@ pub fn read_pk<C: Circuit<Fr>>(path: &Path) -> io::Result<ProvingKey<G1Affine>> 
     // let initial_buffer_size = f.metadata().map(|m| m.len() as usize + 1).unwrap_or(0);
     // let mut bufreader = Vec::with_capacity(initial_buffer_size);
     // f.read_to_end(&mut bufreader)?;
-    let pk = ProvingKey::read::<_, C>(&mut bufreader, SerdeFormat::RawBytes).unwrap();
+    let pk = ProvingKey::read::<_, ConcreteCircuit>(
+        &mut bufreader,
+        SerdeFormat::RawBytes,
+        #[cfg(feature = "halo2_circuit_params")] params,
+    ).unwrap();
 
     #[cfg(feature = "display")]
     end_timer!(read_time);
@@ -139,13 +147,17 @@ pub fn read_pk<C: Circuit<Fr>>(path: &Path) -> io::Result<ProvingKey<G1Affine>> 
 }
 
 #[allow(clippy::let_and_return)]
-pub fn gen_pk<C: Circuit<Fr>>(
+pub fn gen_pk<C: CurveAffine<ScalarExt = Fr>, ConcreteCircuit: Circuit<C::Scalar>>(
     params: &ParamsKZG<Bn256>, // TODO: read pk without params
-    circuit: &C,
+    circuit: &ConcreteCircuit,
     path: Option<&Path>,
+    #[cfg(feature = "halo2_circuit_params")] params2: ConcreteCircuit::Params,
 ) -> ProvingKey<G1Affine> {
     if let Some(path) = path {
-        if let Ok(pk) = read_pk::<C>(path) {
+        if let Ok(pk) = read_pk::<C, ConcreteCircuit>(
+            path,
+            #[cfg(feature = "halo2_circuit_params")] params2,
+        ) {
             return pk;
         }
     }
