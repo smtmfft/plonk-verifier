@@ -124,9 +124,9 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
 }
 
 pub fn read_pk<C: CurveAffine<ScalarExt = Fr>, ConcreteCircuit: Circuit<C::Scalar>>(
-    path: &Path,
-    #[cfg(feature = "halo2_circuit_params")] params: ConcreteCircuit::Params,
-) -> io::Result<ProvingKey<G1Affine>> {
+        path: &Path,
+        #[cfg(feature = "halo2_circuit_params")] params: ConcreteCircuit::Params,
+    ) -> io::Result<ProvingKey<G1Affine>> {
     let f = File::open(path)?;
     #[cfg(feature = "display")]
     let read_time = start_timer!(|| format!("Reading pkey from {path:?}"));
@@ -141,10 +141,8 @@ pub fn read_pk<C: CurveAffine<ScalarExt = Fr>, ConcreteCircuit: Circuit<C::Scala
     let pk = ProvingKey::read::<_, ConcreteCircuit>(
         &mut bufreader,
         SerdeFormat::RawBytes,
-        #[cfg(feature = "halo2_circuit_params")]
-        params,
-    )
-    .unwrap();
+        #[cfg(feature = "halo2_circuit_params")] params,
+    ).unwrap();
 
     #[cfg(feature = "display")]
     end_timer!(read_time);
@@ -162,8 +160,7 @@ pub fn gen_pk<C: CurveAffine<ScalarExt = Fr>, ConcreteCircuit: Circuit<C::Scalar
     if let Some(path) = path {
         if let Ok(pk) = read_pk::<C, ConcreteCircuit>(
             path,
-            #[cfg(feature = "halo2_circuit_params")]
-            params2,
+            #[cfg(feature = "halo2_circuit_params")] params2,
         ) {
             return pk;
         }
